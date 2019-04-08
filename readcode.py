@@ -48,20 +48,40 @@
     8) 计算最小的连码数 (ms, qsf_base)
         1) 设置基本的连码数
         2）对于大于基本连码数的 设置 = 基本连码数（qsf_base）
-    9) 计算期初库存 (po, mv, date_dec, prt_per_in)          为什么只算一周
+    9) 标记一种内是否有移入移出 (po, mv, date_dec, prt_per_in)
         1) 七天的保护周期
         2）计算当前时间的一周内 累积的发出量 之和
         3）计算当前时间的一周内 累计的接收量 之和
         4）计算当前时间的一周内 发出与接收之和
-        5）去重 将NA置0， 如果期初库存 >0 has_in=1, else has_out = 0
+        5）去重 将NA置0， 如果有库存 >0 has_in=1, else has_in= 0
 
 三. 获取权重 extr_we.py  
     sales_we, sr_we, ib_we = etw.extr_we(po, si, wi, ms, i0, s)
 
-    1. 计算销售权重
-        1）计算在区域内的每个skc的权重
-        2）计算在skc中每个门店的权重
-        3）计算每个size的权重
-        4）计算销售权重之和
-    2. 计算组织之间的发送和接收权重
-    3. 计算期初库存权重
+    1. 计算销售权重 cal_sales_we(po, i0, s)
+        计算权重 是为了让销量好的 移出的成本更大
+        1.1 计算在区域内的每个skc的权重  cal_sales_prop_skc(po, i0, s)
+            1.1.1 计算每个门店的skc 销量之和
+            1.1.2 计算每个门店的skc 期初库存之和
+            1.1.3 将po 从大类筛选、删除size、去重，与 1) 和 2) 合并，去除无效值
+            1.1.4 计算每个skc在 大类和区域的 权重
+  
+        1.2 计算在skc中每个门店的权重 cal_sales_prop_store(po, s)
+            1.2.1 产生一对移动组织
+            1.2.2 计算组织间的权重
+            1.2.3 归一化
+
+        1.3 计算每个size的权重  cal_sales_prop_size(po, s)
+            1.3.1
+            1.3.2
+            1.3.3
+
+        1.4 计算销售权重之和 cal_sum_sales_we(po, sp_skc, sp_store, sp_size)
+    2. 计算组织之间的发送和接收权重 cal_sr_we(si, wi, sales_we)
+    3. 计算期初库存权重 cal_inv_dev_we(ms, i0, s)
+
+四、计算成本参数
+    cmq, cmp, cid, cdl, cbs = \
+    ccp.cal_cost_params(pi, si, wi, po, io, sales_we, sr_we, ib_we,
+                        pl.cmq_base_ws, pl.cmq_base_ss, pl.cmp_base_ws,
+                        pl.cmp_base_ss, pl.cid_base, pl.cdl_base, pl.cbs_base)
