@@ -67,9 +67,9 @@
             1.1.4 计算每个skc在 大类和区域的 权重
   
         1.2 计算在skc中每个门店的权重 cal_sales_prop_store(po, s)
-            1.2.1 产生一对移动组织
-            1.2.2 计算组织间的权重
-            1.2.3 归一化
+            1.2.1 
+            1.2.2
+            1.2.3 
 
         1.3 计算每个size的权重  cal_sales_prop_size(po, s)
             1.3.1
@@ -77,8 +77,18 @@
             1.3.3
 
         1.4 计算销售权重之和 cal_sum_sales_we(po, sp_skc, sp_store, sp_size)
+   
     2. 计算组织之间的发送和接收权重 cal_sr_we(si, wi, sales_we)
-    3. 计算期初库存权重 cal_inv_dev_we(ms, i0, s)
+        2.1 产生一对移动组织 _gen_mov_cp(si, wi)
+        2.2 计算发送和接收的门店的权重 _extr_sr_we(mv_cp, sales_we)
+        2.3 归一化 _normalize(sr_we)
+            最大最小归一化 max - min + 1.0 E -10
+
+    3. 计算库存平衡权重 cal_inv_dev_we(ms, i0, s)
+        3.1 计算初始库存与 每个skc的销量之和
+        3.2 合并数据并计算各规模初始库存和销售额之和的相关系数。
+
+        3.3 计算库存平衡权重
 
 四、计算成本参数
     cmq, cmp, cid, cdl, cbs = \
