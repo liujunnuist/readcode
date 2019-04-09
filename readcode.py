@@ -77,6 +77,7 @@
             1.3.3
 
         1.4 计算销售权重之和 cal_sum_sales_we(po, sp_skc, sp_store, sp_size)
+            1.4.1 Sum sales weights of skc, size, and store based on store
    
     2. 计算组织之间的发送和接收权重 cal_sr_we(si, wi, sales_we)
         2.1 产生一对移动组织 _gen_mov_cp(si, wi)
@@ -87,7 +88,6 @@
     3. 计算库存平衡权重 cal_inv_dev_we(ms, i0, s)
         3.1 计算初始库存与 每个skc的销量之和
         3.2 合并数据并计算各规模初始库存和销售额之和的相关系数。
-
         3.3 计算库存平衡权重
 
 四、计算成本参数
@@ -101,13 +101,88 @@
         1.2 将无效的值分别填充为最小值，最大值
 
     2. 计算移动包裹的单位成本 cal_mov_pkg_cost(si, wi, sr_we, cmp_base_ws, cmp_base_ss)
-        2.1 根据组织间的发送和接收权重 计算
+        2.1 根据组织间的发送和接收权重-> 计算
         2.2 产生成对的移动组织、 补货组织
         2.3 合并表,用最大值填充无效值
-        2.4 计算移动包裹的单位成本
+        2.4 计算移动包裹的单位成本（包括仓库到门店、门店之间）
 
     3. 计算库存差异的单位成本  （库存优化中，计算目标库存与库存的差异）
+        3.1 根据销售权重之和-> 计算
+        3.2 将无效的值分别填充为最小值，最大值
+        3.3 用权重之和 乘以单位库存差异成本
 
     4. 计算需求损失的单位成本
+        4.1 根据销售权重之和 -> 计算
+        4.2 将无效的值分别填充为最小值，最大值
+        4.3 用权重之和 乘以单位库存差异成本 得到一个上限和下限 （下限*2）
 
     5. 计算断码的单位成本
+        5.1 根据 库存平衡权重-> 计算
+        5.2 产品信息表 与 库存平衡权重表 合并，NA用最大值清洗
+        5.3 用权重乘以单位断码率的成本
+
+五、计算目标库存
+    d, qss, it = cti.cal_targ_inv(po, ms, i0, s, sales_we, cdl, cid, pl.w,
+                              pl.qss_base)
+
+    1. 计算预测需求 # Calculating demand
+        d = cal_dem(po, ms, s, w)
+        1.1 计算下周的基本需求
+            1.1.1 设置周销量的权重  w = {'w_1': 0.7, 'w_2': 0.3}，对于NA设置为0
+            1.1.2 将前两周的销量 按照权重 相加，返回下周的基本需求
+
+        1.2 计算每个size在区域的销售比例
+            1.2.1 计算每个skc/size的 销量之和
+            1.2.2 将mng_reg_id 合并到 销量之和的表，并将NA置0，并按照 sku + ,mng_reg_id 求和
+                  将 <0 的销量置0
+            1.2.3 计算每个每个size在skc和区域的销售比例
+                  计算skc 在 mng_reg_id 的销售之和，将销售除以总和
+
+        1.3 计算需求的上下界 cal_dem_bd(ms, d_base, sp_size)
+            1.3.1 标准化销售比例 
+                  norm_min = sp / max  norm_max = sp /min  #?????
+            1.3.2 合并 基本需求表与销售比例表
+            1.3.3 计算主码的需求上下界 ：上界: 基本需求的平均值 * 标准化后的比例上界 
+                                       下界：基本需求的平均值 * 标准化后的比例下界
+                   填充非主码都为基本需求
+                  
+
+    2. 计算安全库存 # Calculating safety stock
+        qss = cal_safety_stock(po, ms, i0, d, sales_we, qss_base)
+
+    3.计算基本的目标库存  # Calculating basic target inventory
+        it0 = cal_basic_it(po, i0, s)
+
+
+    4.计算目标库存的上下界 # Calculating target inventory lower- and upper- bounds
+        it_bd = cal_it_bd(d, qss)
+
+    5. 计算提取计算目标库存的目标skc/org  # Extracting target skc/orgs of calculating target inventory
+        po_ti = extr_po_ti(po, i0, it_bd)
+
+    6. 计算门店的目标库存 # Calculating target inventory of stores
+        it = exec_targ_inv_opt(po_ti, ms, it0, it_bd, cdl, cid)
+
+    7. 调整目标库存 # Adjusting target inventory
+        it = adj_targ_inv(po, it)
+
+
+
+
+
+
+
+
+
+
+
+
+六、初始化数据
+七、执行skc/org的补货
+八、执行补货
+九、更新
+十、执行skc/org调拨
+十一、执行调拨
+十二、 更新
+十三、 统计
+
