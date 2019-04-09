@@ -90,7 +90,7 @@
         3.2 合并数据并计算各规模初始库存和销售额之和的相关系数。
         3.3 计算库存平衡权重
 
-四、计算成本参数
+四、计算成本参数 cal_cost_params.py
     cmq, cmp, cid, cdl, cbs = \
     ccp.cal_cost_params(pi, si, wi, po, io, sales_we, sr_we, ib_we,
                         pl.cmq_base_ws, pl.cmq_base_ss, pl.cmp_base_ws,
@@ -106,22 +106,22 @@
         2.3 合并表,用最大值填充无效值
         2.4 计算移动包裹的单位成本（包括仓库到门店、门店之间）
 
-    3. 计算库存差异的单位成本  （库存优化中，计算目标库存与库存的差异）
+    3. 计算库存差异的单位成本 cid （库存优化中，计算目标库存与库存的差异）
         3.1 根据销售权重之和-> 计算
         3.2 将无效的值分别填充为最小值，最大值
-        3.3 用权重之和 乘以单位库存差异成本
+        3.3 用权重之和 乘以 单位库存差异成本（cid_base）得到最小值 cid_a 及最大值 cid_d
 
-    4. 计算需求损失的单位成本
+    4. 计算需求损失的单位成本 cdl 
         4.1 根据销售权重之和 -> 计算
         4.2 将无效的值分别填充为最小值，最大值
-        4.3 用权重之和 乘以单位库存差异成本 得到一个上限和下限 （下限*2）
+        4.3 用权重之和 乘以单位库存差异成本 得到一个上限和下限 （下限*2）cdl_lb, cdl_ub
 
     5. 计算断码的单位成本
         5.1 根据 库存平衡权重-> 计算
         5.2 产品信息表 与 库存平衡权重表 合并，NA用最大值清洗
         5.3 用权重乘以单位断码率的成本
 
-五、计算目标库存
+五、计算目标库存 cal_targ_inv.py
     d, qss, it = cti.cal_targ_inv(po, ms, i0, s, sales_we, cdl, cid, pl.w,
                               pl.qss_base)
 
@@ -149,22 +149,80 @@
 
     2. 计算安全库存 # Calculating safety stock
         qss = cal_safety_stock(po, ms, i0, d, sales_we, qss_base)
+        2.1 计算每个skc的 初始库存 及 预测需求的下界
+        2.2 合并： 销售权重表、 主码表、 初始库存表、 预测需求的下界 ,并清洗NA
+        2.3 将基本安全库存乘以主要尺寸的安全库存的销售重量归一化
+            x * 基本安全库存 /(max - min)
+        2.4 设置期初库存和需求下界 同时为0 的安全库存 为 0
 
     3.计算基本的目标库存  # Calculating basic target inventory
         it0 = cal_basic_it(po, i0, s)
-
+        3.1 计算上周可以销售的库存
+            合并销售数据表 与 期初库存表，并清洗数据
+            将期初库存 与 销售量 相加 （得到的是一周前的期初库存），
+            如果值s<0, 设置为0; 如果期初库存 > 销量, 则设置s为期初库存
+        3.2 合并可销售的库存 与 目标库存  #???
 
     4.计算目标库存的上下界 # Calculating target inventory lower- and upper- bounds
-        it_bd = cal_it_bd(d, qss)
+        it_bd = cal_it_bd(d, qss) 
+        根据 1 预测需求 和 2 安全库存 计算目标库存的上下界
+        4.1 NA 置零
+        4.2 目标库存的上界 = 预期需求的上届 + 安全库存
+            目标库存的下界 = 预测需求的下界 + 安全库存
 
-    5. 计算提取计算目标库存的目标skc/org  # Extracting target skc/orgs of calculating target inventory
+    5. 计算提取skc和组织 计算目标库存的目标skc/org  # Extracting target skc/orgs of calculating target inventory
         po_ti = extr_po_ti(po, i0, it_bd)
 
     6. 计算门店的目标库存 # Calculating target inventory of stores
         it = exec_targ_inv_opt(po_ti, ms, it0, it_bd, cdl, cid)
+        1. 获取org_id 唯一的值，计算得到org的个数
+        2. 多线程 计算 目标库存优化
+            2.1 pool.map(partial(exec_unit, po, ms, it0, it_bd, cdl, cid),
+                      po['mng_reg_id'].drop_duplicates())
+                po : 产品和门店的计算目标库存
+                ms : 主码
+                it0 ：基本的目标库存
+                it_bd ：目标库存的上下界
+                cdl ：单位需求损失成本
+                cid ：单位库存差价成本
+
+            2.2 exec_unit(po, ms, it0, it_bd, cdl, cid, mng_reg_id_sel)
+                每30个一组 循环调用 it_opt_solver(po_grp, ms, it0, it_bd, cdl, cid)
+            2.3 计算目标库存优化 （pyscipopt）
+                it_opt_solver(po_grp, ms, it0, it_bd, cdl, cid)
+
+                变量：
+                    创建决策变量
+                    创建辅助变量 key : prod_id, color_id, size, org_id   dict
+                        dlpl = {} 目标库存与上界的差异
+                        dlpu = {} 目标库存与下界的差异
+                        ida = {}  目标库存与基本库存的绝对差异
+                目标：
+                    1) 目标库存低于下界的成本
+                        x * 单位损失成本下界
+                    2) 目标库存高于上界的成本
+                        x * 单位损失成本上界
+                    3) 目标库存与 基本值得绝对差值
+                        x * 单位库存差异的 最大值
+                辅助等式约束：
+                    1) 目标库存 低于 下界 #？？？？？
+                    2) 目标库存 高于 上界
+                    3) 目标库存 与 基本值的 绝对值
+
+                约束：
+                    如果skc的目标库存 是正数，那么主码的目标库存 也必须是正数。
+                    （设置M 是极大值）
+        3.合并表
 
     7. 调整目标库存 # Adjusting target inventory
         it = adj_targ_inv(po, it)
+        1. 合并目标库存表 与 产品组织表，并置NA为0
+
+
+
+
+
+
 
 
 
