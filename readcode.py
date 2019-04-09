@@ -95,3 +95,19 @@
     ccp.cal_cost_params(pi, si, wi, po, io, sales_we, sr_we, ib_we,
                         pl.cmq_base_ws, pl.cmq_base_ss, pl.cmp_base_ws,
                         pl.cmp_base_ss, pl.cid_base, pl.cdl_base, pl.cbs_base)
+    
+    1. 计算移动数量的单位成本 cal_mov_quant_cost(po, io, sales_we, cmq_base_ws, cmq_base_ss)
+        1.1 根据销售权重--> 计算 补货、进入、进出的cmp
+        1.2 将无效的值分别填充为最小值，最大值
+
+    2. 计算移动包裹的单位成本 cal_mov_pkg_cost(si, wi, sr_we, cmp_base_ws, cmp_base_ss)
+        2.1 根据组织间的发送和接收权重 计算
+        2.2 产生成对的移动组织、 补货组织
+        2.3 合并表,用最大值填充无效值
+        2.4 计算移动包裹的单位成本
+
+    3. 计算库存差异的单位成本  （库存优化中，计算目标库存与库存的差异）
+
+    4. 计算需求损失的单位成本
+
+    5. 计算断码的单位成本
