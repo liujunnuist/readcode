@@ -96,11 +96,13 @@
                         pl.cmq_base_ws, pl.cmq_base_ss, pl.cmp_base_ws,
                         pl.cmp_base_ss, pl.cid_base, pl.cdl_base, pl.cbs_base)
     
-    1. 计算移动数量的单位成本 cal_mov_quant_cost(po, io, sales_we, cmq_base_ws, cmq_base_ss)
+    1. 计算移动数量的单位成本 cmq
+        cal_mov_quant_cost(po, io, sales_we, cmq_base_ws, cmq_base_ss)
         1.1 根据销售权重--> 计算 补货、进入、进出的cmp
         1.2 将无效的值分别填充为最小值，最大值
 
-    2. 计算移动包裹的单位成本 cal_mov_pkg_cost(si, wi, sr_we, cmp_base_ws, cmp_base_ss)
+    2. 计算移动包裹的单位成本 cmp
+        cal_mov_pkg_cost(si, wi, sr_we, cmp_base_ws, cmp_base_ss)
         2.1 根据组织间的发送和接收权重-> 计算
         2.2 产生成对的移动组织、 补货组织
         2.3 合并表,用最大值填充无效值
@@ -121,6 +123,7 @@
         5.2 产品信息表 与 库存平衡权重表 合并，NA用最大值清洗
         5.3 用权重乘以单位断码率的成本
 
+####################
 五、计算目标库存 cal_targ_inv.py
     d, qss, it = cti.cal_targ_inv(po, ms, i0, s, sales_we, cdl, cid, pl.w,
                               pl.qss_base)
@@ -138,7 +141,8 @@
             1.2.3 计算每个每个size在skc和区域的销售比例
                   计算skc 在 mng_reg_id 的销售之和，将销售除以总和
 
-        1.3 计算需求的上下界 cal_dem_bd(ms, d_base, sp_size)
+        1.3 计算需求的上下界 
+            cal_dem_bd(ms, d_base, sp_size)
             1.3.1 标准化销售比例 
                   norm_min = sp / max  norm_max = sp /min  #?????
             1.3.2 合并 基本需求表与销售比例表
@@ -218,29 +222,87 @@
         it = adj_targ_inv(po, it)
         1. 合并目标库存表 与 产品组织表，并置NA为0
 
+####################
+六、初始化数据 postp_data.py
+    q, i0_aft_mov, io_aft_mov = psp.init_data(i0, io)
+    1. 组织之间每个sks的移动数量 q (空表)
+    2. 更新 初始库存（复制）i0_aft_mov 和 移动/移出 （hash_in = 0）
+
+####################
+七、提取补货的目标skc/org #extr_dec_targ.py
+    po_rep = edt.extr_po_rep(po, i0_aft_mov, mr, it)
+    1. 合并数据
+    2. 对于每个skc，组织 必须是门店，目标库存 高于 期初库存之和， 能够允许调入
+    3. 对于每个skc, 组织 必须是仓库，且 期初库存 > 0
+    4. 求和  移入/移出的标记
+
+####################
+八、执行补货 mov_opt.py
+    q_rep, cmp = mvp.exec_rep(po_rep, i0_aft_mov, it, cmq, cmp, cid)
+    exec_rep(po, i0, it, cmq, cmp, cid)
+    cmp : 移动包裹的单位成本
+
+    1. 获取目标组织 org_rec_id 的数量、目标skc的数量
+    2. 每100个一组，执行 补货优化,得到仓库到门店的每个sks的数量 ：
+       补货优化 rep_opt_solver.py
+       ros.rep_opt_solver(po_grp, i0, it, cmq, cmp, cid)
+       rep_opt_solver(po, i0, it, cmq, cmp, cid)
+
+       辅助变量：
+            q : 组织之间 每个sks的移动量 key : prod_id, color_id, size, org_send_id, org_rec_id
+            i : 移动之后最终的库存  key : prod_id, color_id, size, org_id
+            qis : 移入数量之和   key : prod_id, color_id, size, org_id
+            qos : 移出数量之和   key : prod_id, color_id, size, org_id
+            idl ： 最终库存低于 目标库存的数量  key : prod_id, color_id, size, org_id
+            qsp ： 每个包裹的移动 数量之和
+            qpb : 每个移动包括的数量是否 > 0 （type = bool）
+        
+        目标函数：（最小化）
+            1）移动数量的成本
+                发送方到接收方的单位数量成本cmq * 组织间的移动数量
+            2）移动包裹的成本
+                发送方到接收方的单位包裹成本cmp * [0, 1] （有数量肯定有包裹，没有数量肯定没包裹，包裹只算一次）
+            3）最终的库存低于目标的成本
+                库存差异的单位成本 * 库存差异的数量idl
+        
+        辅助等式约束：
+
+        约束：
+            1）对于每个sks，移出量之和qos 不能大于 初始库存i0
+            2）对于每个sks，移入量之和qis 不能导致 最终的库存 大于 目标库存
+
+    3. 更新 移动包裹的单位成本
 
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-六、初始化数据
-七、执行skc/org的补货
-八、执行补货
+####################
 九、更新
+
+####################
 十、执行skc/org调拨
+
+####################
 十一、执行调拨
+
+####################
 十二、 更新
+
+####################
 十三、 统计
 
+
+
+
+ 1. 更新移动数量 # Updating moving quantity
+        q_n = update_q(q, q_a)
+
+    2. 计算移出和移入的数量 # Calculating sum moving -in/-out quantity
+        qis, qos = cal_qios(q_a)
+
+    3. 更新初始的移出的初始库存 # Updating initial inventory of moving-out orgs
+        i0_n = update_inv(i0, qis, qos)
+
+    4. 更新标记 # Updating io markers
+        io_n = update_io(io, qis, qos)
