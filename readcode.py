@@ -1,13 +1,19 @@
-一. Loading data	加载数据
-    pi : Product information
-    si : Store basic information
-    wi : Warehouse basic information	仓库基本信息
-    ms : Main sizes
-    i0 : Initial inventory data      期初存货
-    s  : Sales data 
-    mv : Moving data  （组织的发送方、接收方、日期、数量等）
-    mr : Moving restriction states  （not_in, not_out 门店因为装修等原因不能进出）
-    mp :  Store moving period  （index : org_id	columns : is_rep, is_trans ？）
+一. 加载数据 #load_data.py
+    1.  pi : Product information
+        获取的是昨天的数据
+        sku级别的去重复
+        滤除所有包含NaN
+        转换数据类型
+        排序sort_values、设置index
+
+    2.  si : Store basic information
+    3.  wi : Warehouse basic information	仓库基本信息
+    4.  ms : Main sizes
+    5.  i0 : Initial inventory data      期初存货
+    6.  s  : Sales data 
+    7.  mv : Moving data  （组织的发送方、接收方、日期、数量等）
+    8.  mr : Moving restriction states  （not_in, not_out 门店因为装修等原因不能进出）
+    9.  mp :  Store moving period  （index : org_id	columns : is_rep, is_trans ？）
 
 二. Pre-processing data  预处理数据
     pi, si, po, i0, s, qsf, io = prp.prep_data(pi, si, wi, ms, i0, s, mv, mr, mp, pl.date_dec, pl.qsf_base,pl.prt_per_in)
@@ -118,7 +124,7 @@
         4.2 将无效的值分别填充为最小值，最大值
         4.3 用权重之和 乘以单位库存差异成本 得到一个上限和下限 （下限*2）cdl_lb, cdl_ub
 
-    5. 计算断码的单位成本
+    5. 计算断码的单位成本 cbs
         5.1 根据 库存平衡权重-> 计算
         5.2 产品信息表 与 库存平衡权重表 合并，NA用最大值清洗
         5.3 用权重乘以单位断码率的成本
@@ -226,7 +232,7 @@
         1. 合并目标库存表 与 产品组织表，并置NA为0
 
 ####################
-六、初始化数据 postp_data.py
+六、初始化数据 #postp_data.py
     q, i0_aft_mov, io_aft_mov = psp.init_data(i0, io)
     1. 组织之间每个sks的移动数量 q (空表)
     2. 更新 初始库存（复制）i0_aft_mov 和 移动/移出 （hash_in = 0）
@@ -240,7 +246,7 @@
     4. 求和  移入/移出的标记
 
 ####################
-八、执行补货 mov_opt.py
+八、执行补货 #mov_opt.py
     q_rep, cmp = mvp.exec_rep(po_rep, i0_aft_mov, it, cmq, cmp, cid)
     exec_rep(po, i0, it, cmq, cmp, cid)
     cmp : 移动包裹的单位成本
@@ -280,7 +286,7 @@
 
 
 ####################
-九、更新 postp_data.py
+九、更新 #postp_data.py
     psp.postp_data(q, q_rep, i0_aft_mov, io_aft_mov)
     1. 更新移动数量
         q_n = update_q(q, q_a)
@@ -307,41 +313,125 @@
         如果移出数量 > 0, has_out =2
 
 ####################
-十、执行skc/org调拨 extr_dec_targ.py
+十、执行skc/org调拨 # extr_dec_targ.py
     edt.extr_po_trans(po, i0_aft_mov, io_aft_mov, mr, it)
     extr_po_trans(po, i0, io, mr, it)
     po : 产品组织表 
     i0 ：期初库存表 
-    io:移入移出标记表 
-    mr:移动限制状态表 
+    io : 移入移出标记表 
+    mr : 移动限制状态表 
     it : 目标库存表
-    1. 合并数据：筛选门店、调拨数据
 
-
+    1. 合并数据：筛选是调拨的门店， 合并表
+        i0_sum = 期初存货i0 + 在途库存r #？？？？？
+    2. 标记在调拨中的每个skc的调入调出
+        2.1 能够移入的门店 (to_in = 1)，必须满足：
+            目标库存 it > 0
+            目标库存 it > i0_sum
+            不能被移出 has_out = 0
+            没有被限制 移入 not_in = 0
+        2.2 能够移出的门店 (to_out = 1)，必须满足：
+            期初存货 i0 > 0 
+            不能被移入 has_in = 0
+            没有被限制 移出 not_out = 0
+    3. 对移入、移出求和
+        to_out_skcr = to_out 求和
+        to_mov_skcs = to_in + to_out 再求和
+    4. 挑选 to_out_skcr > 0 且 to_mov_skcs 的数据
 
 
 ####################
-十一、执行调拨优化
+十一、执行调拨优化 # mov_opt.py
+    q_trans, cmp = mvp.exec_trans(po_trans, ms, i0_aft_mov, it, qsf, cmq, cmp, cid,
+                              cbs)
+    exec_trans(po, ms, i0, it, qsf, cmq, cmp, cid, css)
+    1. 获取目标组织 org_rec_id 的数量、目标skc的数量
+    2. 多线程 计算 调拨优化 
+    exec_trans_unit(po, ms, i0, it, qsf, cmq, cmp, cid, css, mng_reg_id_sel)
+        2.1 便于并行，拆分每个地区的单位包裹成本
+            管理区域的目标门店数目
+            区域的目标skc数目
+        2.2 每30个一组，执行 调拨优化：# trans_opt_solver.py
+        q_grp = tos.trans_opt_solver(po_grp, ms, i0, it, qsf, cmq, cmp_reg,
+                                         cid, css)
+        trans_opt_solver(po, ms, i0, it, qsf, cmq, cmp, cid, cbs)
 
+        决策变量 q (dict)：
+            门店之间每个sks的移动数量 q
 
+        辅助变量 （dict）：
+            i = 每个sks 调拨后的最终库存
+            ib = 是否最终库存 >0 (bool) 
+            qis = 每个sks的移入数量之和
+            qos = 每个sks的移出数量之和
+            qib = 是否qis > 0 (bool)
+            qob = 是否qos > 0 (bool)
+            idg = 最终库存 > 目标库存的差异量
+            idl = 最终库存 < 目标库存的差异量
+
+            is_ = 每个skc 调拨后的最终库存
+            isb = 是否每个skc最终库存 >0 (bool) 
+            bsb = 是否每个skc的所有主码是断码 (bool)
+            ibs = 每个断码的skc的最终库存
+            qsp = 每个包裹的移动数量
+            qpb = 是否每个包裹的移动数量 > 0 (bool)
+
+        目标：
+            1）移动数量的成本  ###?????
+                2 * 移入单位成本cmq_trans_in * 移出单位成本cmq_trans_out / (移入单位成本 * 移出单位成本)
+
+            2）移动包裹的成本
+                移动包裹的单位成本 * qpb (0,1变量)
+
+            3）目标库存与最终库存的差异的成本
+                单位库存差异成本最小值 cid_a * 最终库存 与目标库存的差异 idg
+                单位库存差异成本的最大值 cid_b * 目标库存 - 最终库存的差异 idl
+                #???????
+            4）主码断码的成本
+                断码的单位成本cbs * 每个断码的skc的最终库存 ibs
+        
+        辅助等式约束：
+            1) qib = sign (qis)
+            2) qob = sign (qos)
+            3) ib = sign (i)
+            4) isb = sign(is_)
+            5) idg = max (id1, 0)
+               idl = max (id2, 0)
+            6) 标出每个skc的全码org
+                qfsb = sign(qfs)  ####？？ fullsize 是指的三连码
+                标出在移动之后 所有的主码 变成断码 bsb
+            7)  if bsb = 0, ibs = 0, else if bsb = 1, ibs = is_
+            8)  qpb = sign(qsp)
+
+        约束：
+            1）移出量总和不能超过期初库存
+                每个skc的移出量 qos < =  max (i0, 0)
+            2）移入量 不能导致 最终的库存 高于 目标库存
+                每个sks的移入之和 qis < = max(0, 目标库存 it - (期初库存 i0+ 在途库存 r))
+            3）移入 和 移出 不能同时发生 (如果不这样算，多算了一边变量)
+                qib + qob <= 1
 
 ####################
 十二、 更新
+    再次执行 第九步，更新所有的数据
+    q, i0_aft_mov, io_aft_mov = psp.postp_data(q, q_trans, i0_aft_mov, io_aft_mov)
 
 ####################
 十三、 统计
+    输出信息：版本、更新、决策时间、运行时间
+    补货：
+        移动的数量之和
+        包裹的数量之和
+        skc的数量之和
+        调出的RDC的数目之和
+        补货的门店的数目之和
+    调拨：
+        移动的数量之和
+        包裹的数量之和
+        skc的数量之和
+        调出的RDC的数目之和
+        补货的门店的数目之和
 
 
 
 
- 1. 更新移动数量 # Updating moving quantity
-        q_n = update_q(q, q_a)
-
-    2. 计算移出和移入的数量 # Calculating sum moving -in/-out quantity
-        qis, qos = cal_qios(q_a)
-
-    3. 更新初始的移出的初始库存 # Updating initial inventory of moving-out orgs
-        i0_n = update_inv(i0, qis, qos)
-
-    4. 更新标记 # Updating io markers
-        io_n = update_io(io, qis, qos)
