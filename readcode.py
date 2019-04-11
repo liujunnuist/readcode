@@ -2,11 +2,12 @@
     1.  pi : Product information
         获取的是昨天的数据
         sku级别的去重复
-        滤除所有包含NaN
-        转换数据类型
-        排序sort_values、设置index
+        滤除所有包含NaN 、 转换数据类型、排序sort_values、设置index
 
     2.  si : Store basic information
+        选取正常营业的门店
+        mng_reg_id = 大区id (dq_id) + 地区id (zone_id) 组合
+
     3.  wi : Warehouse basic information	仓库基本信息
     4.  ms : Main sizes
     5.  i0 : Initial inventory data      期初存货
