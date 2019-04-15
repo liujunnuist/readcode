@@ -27,7 +27,7 @@
             index : prod_id, color_id, size, org_id
             columns : date_sell, s
 
-            s: 销量qty之和  ##？？为啥是是一个月 between 1 and 30
+            s: 计算了一个月内的销量qty之和 （between 1 and 30）
 
     6.  mv : Moving data  
          index : prod_id, color_id, size
@@ -106,16 +106,16 @@
         1）将5的数据表 去重后 join 初始库存表
         2）填充NaN 为 0
 
-    7) 填充销售数据 (po, i0)
+    7. 填充销售数据 (po, i0)
         1）产品组织表去重
         2) 生成周表。week_no = [-4, -3, -2, -1]
         3) 合并 生成完整的每周销售数据
 
-    8) 计算最小的连码数 (ms, qsf_base)
+    8. 计算最小的连码数 (ms, qsf_base)
         1) 设置基本的连码数
         2）对于大于基本连码数的 设置 = 基本连码数（qsf_base）
 
-    9) 标记一种内是否有移入移出 (po, mv, date_dec, prt_per_in)
+    9. 标记一种内是否有移入移出 (po, mv, date_dec, prt_per_in)
         1) 七天的保护周期
         2）计算当前时间的一周内 累积的发出量 之和
         3）计算当前时间的一周内 累计的接收量 之和
@@ -126,34 +126,34 @@
 三. 获取权重 extr_we.py  
     sales_we, sr_we, ib_we = etw.extr_we(po, si, wi, ms, i0, s)
 
-    1. 计算销售权重 cal_sales_we(po, i0, s)
-        计算权重 是为了让销量好的 移出的成本更大
-        1.1 计算在区域内的每个skc的权重  cal_sales_prop_skc(po, i0, s)
+    1. 计算销量权重 #sales_we = cal_sales_we(po, i0, s)
+        (计算权重 是为了让销量好的 移出的成本更大)
+        1.1 计算在区域内的每个skc的权重  #sp_skc = cal_sales_prop_skc(po, i0, s)
             1.1.1 计算每个门店的skc 销量之和
             1.1.2 计算每个门店的skc 期初库存之和
             1.1.3 将po 从大类筛选、删除size、去重，与 1) 和 2) 合并，去除无效值
             1.1.4 计算每个skc在 大类和区域的 权重
   
-        1.2 计算在skc中每个门店的权重 cal_sales_prop_store(po, s)
+        1.2 计算在skc中每个门店的权重 #sp_store = cal_sales_prop_store(po, s)
             1.2.1 
             1.2.2
             1.2.3 
 
-        1.3 计算每个size的权重  cal_sales_prop_size(po, s)
+        1.3 计算每个size的权重 #sp_size = cal_sales_prop_size(po, s)
             1.3.1
             1.3.2
             1.3.3
 
-        1.4 计算销售权重之和 cal_sum_sales_we(po, sp_skc, sp_store, sp_size)
+        1.4 计算销售权重之和 #sales_we = cal_sum_sales_we(po, sp_skc, sp_store, sp_size)
             1.4.1 Sum sales weights of skc, size, and store based on store
    
-    2. 计算组织之间的发送和接收权重 cal_sr_we(si, wi, sales_we)
+    2. 计算组织之间的发送和接收权重 #sr_we = cal_sr_we(si, wi, sales_we)
         2.1 产生一对移动组织 _gen_mov_cp(si, wi)
         2.2 计算发送和接收的门店的权重 _extr_sr_we(mv_cp, sales_we)
         2.3 归一化 _normalize(sr_we)
             最大最小归一化 max - min + 1.0 E -10
 
-    3. 计算库存平衡权重 cal_inv_dev_we(ms, i0, s)
+    3. 计算库存平衡权重 #ib_we = cal_inv_dev_we(ms, i0, s)
         3.1 计算初始库存与 每个skc的销量之和
         3.2 合并数据并计算各规模初始库存和销售额之和的相关系数。
         3.3 计算库存平衡权重
@@ -165,40 +165,40 @@
                         pl.cmq_base_ws, pl.cmq_base_ss, pl.cmp_base_ws,
                         pl.cmp_base_ss, pl.cid_base, pl.cdl_base, pl.cbs_base)
     
-    1. 计算移动数量的单位成本 cmq
+    1. 计算移动数量的单位成本 #cmq = cal_mov_quant_cost(po, io, sales_we, cmq_base_ws, cmq_base_ss)
         cal_mov_quant_cost(po, io, sales_we, cmq_base_ws, cmq_base_ss)
-        1.1 根据销售权重--> 计算 补货、进入、进出的cmp
+        1.1 根据销售权重-> 计算 补货、进入、进出的cmp
         1.2 将无效的值分别填充为最小值，最大值
 
-    2. 计算移动包裹的单位成本 cmp
+    2. 计算移动包裹的单位成本 #cmp = cal_mov_pkg_cost(si, wi, sr_we, cmp_base_ws, cmp_base_ss)
         cal_mov_pkg_cost(si, wi, sr_we, cmp_base_ws, cmp_base_ss)
         2.1 根据组织间的发送和接收权重-> 计算
         2.2 产生成对的移动组织、 补货组织
         2.3 合并表,用最大值填充无效值
         2.4 计算移动包裹的单位成本（包括仓库到门店、门店之间）
 
-    3. 计算库存差异的单位成本 cid （库存优化中，计算目标库存与库存的差异）
+    3. 计算库存差异的单位成本 #cid = cal_inv_diff_cost(po, sales_we, cid_base)
+    （库存优化中，计算目标库存与库存的差异）
         3.1 根据销售权重之和-> 计算
         3.2 将无效的值分别填充为最小值，最大值
         3.3 用权重之和 乘以 单位库存差异成本（cid_base）得到最小值 cid_a 及最大值 cid_d
 
-    4. 计算需求损失的单位成本 cdl 
+    4. 计算需求损失的单位成本 #cdl = cal_dem_loss_cost(po, sales_we, cdl_base)
         4.1 根据销售权重之和 -> 计算
         4.2 将无效的值分别填充为最小值，最大值
         4.3 用权重之和 乘以单位库存差异成本 得到一个上限和下限 （下限*2）cdl_lb, cdl_ub
 
-    5. 计算断码的单位成本 cbs
+    5. 计算断码的单位成本 #cbs = cal_brokensize_cost(pi, ib_we, cbs_base)
         5.1 根据 库存平衡权重-> 计算
         5.2 产品信息表 与 库存平衡权重表 合并，NA用最大值清洗
         5.3 用权重乘以单位断码率的成本
 
 ######################################################################
-五、计算目标库存 cal_targ_inv.py
+五、计算目标库存 #cal_targ_inv.py
     d, qss, it = cti.cal_targ_inv(po, ms, i0, s, sales_we, cdl, cid, pl.w,
                               pl.qss_base)
 
-    1. 计算预测需求 # Calculating demand
-        d = cal_dem(po, ms, s, w)
+    1. 计算预测需求 # d = cal_dem(po, ms, s, w)
         1.1 计算下周的基本需求
             1.1.1 设置周销量的权重  w = {'w_1': 0.7, 'w_2': 0.3}，对于NA设置为0
             1.1.2 将前两周的销量 按照权重 相加，返回下周的基本需求
@@ -220,7 +220,7 @@
                    填充非主码都为基本需求
                   
 
-    2. 计算安全库存 # Calculating safety stock
+    2. 计算安全库存 # qss = cal_safety_stock(po, ms, i0, d, sales_we, qss_base)
         qss = cal_safety_stock(po, ms, i0, d, sales_we, qss_base)
         2.1 计算每个skc的 初始库存 及 预测需求的下界
         2.2 合并： 销售权重表、 主码表、 初始库存表、 预测需求的下界 ,并清洗NA
@@ -228,7 +228,7 @@
             x * 基本安全库存 /(max - min)
         2.4 设置期初库存和需求下界 同时为0 的安全库存 为 0
 
-    3.计算基本的目标库存  # Calculating basic target inventory
+    3.计算基本的目标库存  # it0 = cal_basic_it(po, i0, s)
         it0 = cal_basic_it(po, i0, s)
         3.1 计算上周可以销售的库存
             合并销售数据表 与 期初库存表，并清洗数据
@@ -236,21 +236,21 @@
             如果值s<0, 设置为0; 如果期初库存 > 销量, 则设置s为期初库存
         3.2 合并可销售的库存 与 目标库存  #???
 
-    4.计算目标库存的上下界 # Calculating target inventory lower- and upper- bounds
+    4.计算目标库存的上下界 # it_bd = cal_it_bd(d, qss)
         it_bd = cal_it_bd(d, qss) 
         根据 1 预测需求 和 2 安全库存 计算目标库存的上下界
         4.1 NA 置零
         4.2 目标库存的上界 = 预期需求的上届 + 安全库存
             目标库存的下界 = 预测需求的下界 + 安全库存
 
-    5. 计算提取skc和组织 计算目标库存的目标skc/org  # Extracting target skc/orgs of calculating target inventory
+    5. 计算提取skc和组织 计算目标库存的目标skc/org  #po_ti = extr_po_ti(po, i0, it_bd)
+
         po_ti = extr_po_ti(po, i0, it_bd)
 
-    6. 计算门店的目标库存 # Calculating target inventory of stores
-        it = exec_targ_inv_opt(po_ti, ms, it0, it_bd, cdl, cid)
-        1. 获取org_id 唯一的值，计算得到org的个数
-        2. 多线程 计算 目标库存优化
-            2.1 pool.map(partial(exec_unit, po, ms, it0, it_bd, cdl, cid),
+    6. 计算门店的目标库存 # it = exec_targ_inv_opt(po_ti, ms, it0, it_bd, cdl, cid)
+        6.1. 获取org_id 唯一的值，计算得到org的个数
+        6.2. 多线程 计算 目标库存优化
+            6.2.1 pool.map(partial(exec_unit, po, ms, it0, it_bd, cdl, cid),
                       po['mng_reg_id'].drop_duplicates())
                 po : 产品和门店的计算目标库存
                 ms : 主码
@@ -259,9 +259,9 @@
                 cdl ：单位需求损失成本
                 cid ：单位库存差价成本
 
-            2.2 exec_unit(po, ms, it0, it_bd, cdl, cid, mng_reg_id_sel)
+            6.2.2 exec_unit(po, ms, it0, it_bd, cdl, cid, mng_reg_id_sel)
                 每30个一组 循环调用 it_opt_solver(po_grp, ms, it0, it_bd, cdl, cid)
-            2.3 计算目标库存优化 （pyscipopt）
+            6.2.3 计算目标库存优化 （pyscipopt）
                 it_opt_solver(po_grp, ms, it0, it_bd, cdl, cid)
 
                 变量：
@@ -288,9 +288,9 @@
                 约束：
                     如果skc的目标库存 是正数，那么主码的目标库存 也必须是正数。
                     （设置M 是极大值）
-        3.合并表
+        6.3.合并表
 
-    7. 调整目标库存 # Adjusting target inventory
+    7. 调整目标库存 # it = adj_targ_inv(po, it)
         it = adj_targ_inv(po, it)
         1. 合并目标库存表 与 产品组织表，并置NA为0
 
