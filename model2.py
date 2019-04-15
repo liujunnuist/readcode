@@ -1,56 +1,116 @@
+*****************
+2019/4/15
+liujunnuist@163.com
+*****************
+
+
+######################################################################
 一. 加载数据 #load_data.py
-    1.  pi : Product information
+    1.  pi : Product information #pi = self.load_prod_basic_info(date_dec)
+             index : prod_id, color_id
+             columns : size, size_order, year, season_id, class_0
         获取的是昨天的数据
-        sku级别的去重复、滤除所有包含NaN 、 转换数据类型、排序sort_values、设置index
+        sku级别的去重复、删除所有包含NaN 、 转换数据类型、排序sort_values、设置index
+    
+    2. oi : 组织信息表 #oi = self.load_org_basic_info()
+            index : org_id
+            columns : prov_id, city_id, dist_id, mng_reg_id,
+                       is_store(default 1,
+                                1 for store,
+                                0 for replenishment warehouse,
+                               -1 for return warehouse)
+            挑选stockorg_code = code0812 或者正常营业的ST
+    
+    3. i0 : 期初库存 #i0 = self.load_init_inv_data(date_dec)
+            index : prod_id, color_id, size, org_id
+            columns : i0, r
+            i0 ：期初库存 r: 在途库存
+            ['prod_id', 'color_id', 'size', 'org_id'] 去重、滤除所有包含NaN 、 转换数据类型、排序sort_values、设置index
 
-    2.  si : Store basic information
-        选取正常营业的门店
-        mng_reg_id = 大区id (dq_id) + 地区id (zone_id) 组合
-        org级别的去重复、滤除所有包含NaN 、 转换数据类型、排序sort_values、设置index
-
-    3.  wi : Warehouse basic information	仓库基本信息
-             index : org_id     
-             columns : prov_id, city_id
-        如果为空，则设置为浙江 宁波 #WHERE store_id = '420867' ？？？？
-
-    # 4.  ms : Main sizes
-    4.  i0 : Initial inventory data      期初存货
-             index : prod_id, color_id, size, org_id
-             columns : i0, r
-
-             i0 : 期初库存，前一天的库存量
-             r  ：在途库存，期待到达的日期在9天前 到7天前，#####？？？？？？？
-                 sum（期待到达的数量 - 实际到达的数量）
-            'prod_id', 'color_id', 'size', 'org_id'级别去重复、滤除所有包含NaN 、 转换数据类型、排序sort_values、设置index
-
-    5.  s  : Sales data 
+    4. s : 销售数据 #load_sales_data(date_dec)
             index : prod_id, color_id, size, org_id
             columns : date_sell, s
 
-            s: 计算了一个月内的销量qty之和 （between 1 and 30）
+            s: 根据 产品信息表 and 组织信息表 作为条件 筛选销售日期在前4周的每天销售量
+    
+    5. mv : 移动数据 #load_mov_data(date_dec)
+            index : prod_id, color_id, size
+            columns : org_send_id, org_rec_id, date_send, date_rec, qty_send, qty_rec
+            5.1 从库存移动事实表中，选取发送日期 三个月内的数据（对发送和接收量为空的置0） 
+            5.2 删除 quant_send < 0 的数据。删除NA, 转化数据格式，排序，设置index
 
-    6.  mv : Moving data  
-         index : prod_id, color_id, size
-         columns : org_send_id, org_rec_id, date_send, date_rec, quant_send (发送数量),
-                   quant_rec (接受数量)
-        6.1 从库存移动事实表中，选取发送日期 三个月内的数据 #三个月内？？
-        6.2 删除 quant_send < 0 的数据
-        6.2 删除NA, 转化数据格式，排序，设置index
-
-    7.  mr : Moving restriction states 
+    6. itp: #target inventory of the previous day （空）
+            index : prod_id, color_id, size, org_id
+            columns : itp 
+    7. mpa: #Loading permitted moving actions of stores （空）
+            index : org_id
+            columns : is_rep(0), is_trans(0), is_ret(0)
+    8. mss: #Special moving states （空）
             index : prod_id, color_id, org_id
-            columns : not_in, not_out 
-           （not_in, not_out 门店因为装修等原因不能进出）
-            选取当前日期 正常营业的门店的移动现实状态（具体到某个门店的skc）
+            columns : not_in(0), not_out(0), to_emp(0)
+    9. di : #Display information （空）
+            index : org_id, season_id
+            columns : qs_min(0), qd_min(0)
 
-    8.  mp :  Store moving period   ##？？？
-              index : org_id	
-              columns : is_rep, is_trans 
-              选取当前日期的正常营业的门店的数据 
-              is_rep, is_trans : (0, 1)变量, Y 为1，否则为0 
+
+           
+
 
 ######################################################################
-二. 预处理数据 #prep_data.py
+
+二、销售数据预处理 #prep_sales_data.py  return s_p
+
+    #s = sale_data_prepare.proc_sales_data(pi, oi, i0, s, model_param.DECISION_DATE)
+    
+    2.1 统计每周销售之和 #s_p = self.agg_week_sales(s, date_dec)   
+        # Aggregating weekly sales
+        s_week : pd.DataFrame
+                Weekly sales
+                index : prod_id, color_id, size, org_id, week_no
+                columns : s
+        1) 按7天 销售数据分组， -1 代表上周，-2 代表上上周
+        2）分组求和，计算每周的销量
+        3）将周销量s <0, 置零
+
+    2.2 计算门店的归一化后的销售权重  #sw_store = self.cal_store_we(pi, oi, i0, s_p)
+        # Calculating store normalized sales weights
+        sw_store : pd.DataFrame
+                   Sales weight of each season/class/store
+                   index : season_id, class_0, mng_reg_id, org_id
+                   columns : sw_store
+        2.2.1 计算期初库存 及 每个门店的skc的销量
+        2.2.2 合并产品信息 和 门店信息
+        2.2.3 标出 期初库存sw_store['i0'] 或 销量sw_store['s'] > 0 的skc/store,设置sw_store['sn']=1
+        2.2.4 计算 销量之和 和 每个门店单季skc的数量之和，删除sw_store['sn']<= 0 的数据
+        2.2.5 计算平均值 销量/个数（sw_store['sn']），删除平均值 <0 的数据
+        2.2.6 标准化 sw_store['sw_store'] = 平均值/平均值的最大值   
+
+    2.3 计算每周等效的销量 #s_eq = self.cal_eqv_sales(pi, oi, s_p, sw_store)
+        # Calculating equivalent weekly sales
+        oi : 组织基本信息表     s_p ：周销量
+
+        计算等效的销量
+         s_eq = s_eq.loc[s_eq['sw_store'] > 0].copy()
+         s_eq['s'] /= s_eq['sw_store']   
+        #######对于销售好的店铺，s_eq基本不变，对于销售差的店铺，提高它的等效的周销量
+    
+
+    2.4 处理每周销售异常 #s_p = self.proc_sales_outlier(oi, s_eq)
+        # Processing weekly sales outliers
+        1) 计算销售频次的百分比，对于小于90%的，设置s_ub = 销量的最大值，否则设置 
+        2) 用上界 替换超过上界的值
+        
+######################################################################
+三、预处理数据
+
+
+
+
+
+
+
+
+
     pi, si, po, i0, s, qsf, io = prp.prep_data(pi, si, wi, ms, i0, s, mv, mr, mp, pl.date_dec, pl.qsf_base,pl.prt_per_in)
     
     return pi_p, si_p, po, i0_f, s_f, qsf, io
@@ -66,13 +126,7 @@
         4) 进行 第 6 步
 
     2. 统计每周总销售额 #s_week = agg_week_sales(s, date_dec)
-        s_week : pd.DataFrame
-             Weekly sales
-             index : prod_id, color_id, size, org_id, week_no
-             columns : s
-        1) 按7天 销售数据分组， -1 代表上周，-2 代表上上周
-        2）分组求和，计算每周的销量
-        3）将周销量s <0, 置零
+        
         
     3. 处理产品信息 #pi_p = proc_prod_info(pi, i0_p, mr)
         1）计算sku的最大期初库存i0_max，max大于0的才认为有效 ###代码
