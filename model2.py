@@ -137,8 +137,8 @@ pi, oi, po, i0, s, io =
                index : prod_id, color_id
                columns : size, size_order, year, season_id, class_0
         1) 计算sku的最大期初库存i0_max，筛选 max > 0的有效数据
-        2) itp(前一天的目标库存)不为空，选择有目标库存的 ###？？
-        3) mss(特殊移动状态)不为空，选取允许调入和调出的skc
+        2) itp(前一天的目标库存) 不为空，选择有目标库存的数据
+        3) mss(特殊移动状态) 不为空，选取允许调入和调出的skc
 
         
     3.3 处理组织信息 #oi_p = self.proc_org_info(oi, i0_p, s, itp, mpa, mss)
