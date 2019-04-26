@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData">
+    <serverData>
+      <paths name="erkemodel@122.112.236.232:22">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/erkemodel/erkemodel_lj" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+    </serverData>
+  </component>
+</project>
